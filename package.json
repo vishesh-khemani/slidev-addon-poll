@@ -1,0 +1,8 @@
+{
+  "name": "slidev-addon-poll",
+  "version": "0.0.1",
+  "keywords": ["slidev-addon", "slidev"],
+  "slidev": {
+    "components": "./components"
+  }
+}
