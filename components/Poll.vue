@@ -1,5 +1,8 @@
 <script setup>
 import { ref, computed } from 'vue'
+import MarkdownIt from 'markdown-it'
+
+const md = new MarkdownIt()
 import { onSlideEnter, onSlideLeave } from '@slidev/client'
 
 const props = defineProps({
@@ -14,7 +17,7 @@ const props = defineProps({
   // Server config — defaults read from VITE_POLL_SERVER / VITE_POLL_PASSWORD in .env.local
   server: { type: String, default: () => import.meta.env.VITE_POLL_SERVER ?? 'http://localhost:8000' },
   password: { type: String, default: () => import.meta.env.VITE_POLL_PASSWORD ?? '' },
-  username: { type: String, default: 'admin' },
+  username: { type: String, default: () => import.meta.env.VITE_POLL_USERNAME ?? '' },
 })
 
 const questionId = ref(null)
@@ -22,6 +25,14 @@ const live = ref(false)
 const error = ref(null)
 
 const sessionId = ref(null)
+
+const hasCredentials = computed(() => !!props.username && !!props.password)
+
+const normalizedChoices = computed(() =>
+  Array.isArray(props.choices)
+    ? props.choices
+    : props.choices.split(',').map(c => c.trim()).filter(Boolean)
+)
 
 const iframeSrc = computed(() => {
   if (!sessionId.value) return props.server
@@ -55,6 +66,7 @@ async function computeFingerprint(body) {
 
 onSlideEnter(async () => {
   error.value = null
+  if (!hasCredentials.value) return
   if (!await ensureSession()) return
 
   const body = { type: props.type, question: props.question }
@@ -86,21 +98,30 @@ onSlideEnter(async () => {
 
 onSlideLeave(async () => {
   live.value = false
-  if (sessionId.value) {
+  if (hasCredentials.value && sessionId.value) {
     await apiFetch('POST', '/api/admin/question/visibility', { hidden: true })
   }
 })
 </script>
 
 <template>
-  <div class="poll-status">
-    <span v-if="error" style="color: red">Poll error: {{ error }}</span>
-    <span v-else-if="!live" style="opacity: 0.5">Connecting to poll…</span>
-    <span v-else style="opacity: 0.7">Play at https://poll.visheshk.org</span>
+  <template v-if="hasCredentials">
+    <div class="poll-status">
+      <span v-if="error" style="color: red">Poll error: {{ error }}</span>
+      <span v-else-if="!live" style="opacity: 0.5">Connecting to poll…</span>
+      <span v-else style="opacity: 0.7">Play at https://poll.visheshk.org</span>
+    </div>
+    <iframe
+      v-if="live"
+      :src="iframeSrc"
+      style="width: 100%; height: 100%; border: none; pointer-events: auto;"
+    />
+  </template>
+  <div v-else class="poll-question-only">
+    <div class="poll-question-text" v-html="md.renderInline(question)" />
+    <ol v-if="type === 'multiple-choice' && normalizedChoices.length" class="poll-choices">
+      <li v-for="(choice, i) in normalizedChoices" :key="i">{{ choice }}</li>
+    </ol>
+    <pre v-if="type === 'code' && starterCode" class="poll-starter-code">{{ starterCode }}</pre>
   </div>
-  <iframe
-    v-if="live"
-    :src="iframeSrc"
-    style="width: 100%; height: 100%; border: none; pointer-events: auto;"
-  />
 </template>
